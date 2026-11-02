@@ -1,0 +1,11 @@
+# Consistent line endings across Windows/macOS/Linux
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
