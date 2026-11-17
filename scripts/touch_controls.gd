@@ -13,9 +13,13 @@ var _stick_index := -1
 var _stick_origin := Vector2.ZERO
 var _stick_pos := Vector2.ZERO
 var _attack_index := -1
+var settings: SettingsMenu  # so taps on its pause button aren't treated as attacks
 
 
 func _ready() -> void:
+	# Keep tracking fingers while paused, so a finger lifted during the
+	# pause menu doesn't leave the player walking afterwards.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	mouse_filter = MOUSE_FILTER_IGNORE
 	set_anchors_preset(PRESET_FULL_RECT)
 	get_viewport().size_changed.connect(queue_redraw)
@@ -27,6 +31,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
+			if settings and settings.pause_button_rect().has_point(touch.position):
+				return
 			if touch.position.x < view.x * 0.5 and _stick_index == -1:
 				_stick_index = touch.index
 				_stick_origin = touch.position

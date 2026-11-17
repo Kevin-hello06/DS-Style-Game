@@ -109,10 +109,15 @@ var enemies_left := 0
 var _leaving := false
 var doors_locked := false
 var _doors := {}                  # door Area2D -> digit
+## Doors ignore the player until they've stepped away from every door once.
+## Otherwise you'd arrive next to a door and get bounced straight back through it.
+var _doors_armed := false
+var _clear_frames := 0
 var _door_blockers: StaticBody2D  # solid boxes over the doors while locked
 
 
 func _ready() -> void:
+	GameAudio.ensure(get_tree())
 	_setup_input()
 	_build_world()
 	_build_ui()
@@ -258,6 +263,20 @@ func _build_world() -> void:
 		_door_blockers = null
 
 
+func _physics_process(_delta: float) -> void:
+	if _doors_armed or not is_instance_valid(player):
+		return
+	for door in _doors:
+		if door.overlaps_body(player):
+			_clear_frames = 0
+			return
+	# Overlaps are only known after the physics engine has run a step or two,
+	# so wait a few frames of "not touching any door" before arming.
+	_clear_frames += 1
+	if _clear_frames >= 3:
+		_doors_armed = true
+
+
 func _add_door(at: Vector2, digit: String) -> void:
 	var door := Area2D.new()
 	door.position = at
@@ -284,11 +303,13 @@ func _add_door(at: Vector2, digit: String) -> void:
 
 
 func _go_through(digit: String) -> void:
-	if _leaving or not DOORS.get(area, {}).has(digit):
+	if _leaving or not _doors_armed or not DOORS.get(area, {}).has(digit):
 		return
 	if doors_locked:
 		hud.show_message("Defeat all enemies first!", 1.5)
+		GameAudio.sfx("locked")
 		return
+	GameAudio.sfx("door")
 	_leaving = true
 	saved_health = player.health
 	arrive_door = digit
@@ -349,9 +370,16 @@ func _build_ui() -> void:
 	hud.set_health(player.health, player.max_health)
 	player.health_changed.connect(hud.set_health)
 
+	var settings := SettingsMenu.new()
+
 	# On the phone, show the virtual joystick + attack button.
 	if DisplayServer.is_touchscreen_available():
-		layer.add_child(TouchControls.new())
+		var touch := TouchControls.new()
+		touch.settings = settings
+		layer.add_child(touch)
+
+	# Added last so the menu draws on top of everything.
+	layer.add_child(settings)
 
 
 func _on_enemy_killed(at: Vector2) -> void:
@@ -371,6 +399,7 @@ func _unlock_doors() -> void:
 	_door_blockers = null
 	queue_redraw()
 	hud.show_message("Area cleared! The doors are open.")
+	GameAudio.sfx("unlock")
 	# If the player is already standing against a door, let them through now.
 	for door in _doors:
 		if door.overlaps_body(player):

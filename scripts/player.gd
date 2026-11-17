@@ -92,6 +92,7 @@ func _physics_process(delta: float) -> void:
 func _start_attack() -> void:
 	attack_timer = ATTACK_TIME
 	cooldown_timer = ATTACK_COOLDOWN
+	GameAudio.sfx("swing")
 
 	_sword = Area2D.new()
 	_sword.collision_layer = 0
@@ -125,7 +126,10 @@ func take_damage(amount: int, from: Vector2) -> void:
 	knockback = (global_position - from).normalized() * KNOCKBACK_SPEED
 	health_changed.emit(health, max_health)
 	if health == 0:
+		GameAudio.sfx("die")
 		died.emit()
+	else:
+		GameAudio.sfx("hurt")
 
 
 func heal(amount: int) -> void:

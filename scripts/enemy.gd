@@ -59,6 +59,7 @@ func hit(amount: int, from: Vector2) -> void:
 	hp -= amount
 	flash_timer = 0.12
 	knockback = (global_position - from).normalized() * 220.0
+	GameAudio.sfx("defeat" if hp <= 0 else "hit")
 	if hp <= 0:
 		killed.emit(global_position)
 		queue_free()
