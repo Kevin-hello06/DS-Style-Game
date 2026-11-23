@@ -1,14 +1,16 @@
 extends Node2D
-## Builds the current area from its ASCII map, spawns everything, and wires up
-## the HUD and touch controls.
+class_name World
+## The game world shown on the top screen. Builds the current area from its
+## ASCII map, spawns everything, and handles doors between areas.
 ##
 ## Map legend:
 ##   #  wall          ~  water (blocks movement)
 ##   .  floor         P  player start (first area only)
 ##   E  enemy         H  heart pickup
-##   1-9  door: walks you to the area named in DOORS. The matching digit in
+##   1-9  door: leads to the area named in DOORS. The matching digit in
 ##        that area is where you come out.
 ## The outer border is always solid (except doors), so rows don't need perfect lengths.
+## Doors stay locked until every enemy in the area is defeated.
 
 const TILE := 16
 
@@ -80,18 +82,19 @@ const DOORS := {
 	"lake": {"2": "field"},
 }
 
+## Where each area sits on the bottom screen's mini-map (grid cells).
+const MAP_POS := {
+	"field": Vector2i(0, 0),
+	"cave": Vector2i(1, 0),
+	"lake": Vector2i(0, 1),
+}
+
 ## Floor colours per area (checkerboard pair), so each area feels different.
 const FLOOR_COLORS := {
 	"field": [Color("#6aa84f"), Color("#62a048")],
 	"cave": [Color("#5d5a6b"), Color("#565363")],
 	"lake": [Color("#c9b47a"), Color("#c2ad72")],
 }
-
-## Static vars survive the scene reload we use to switch areas.
-static var area := "field"
-static var arrive_door := ""      # door digit we came through ("" = use P)
-static var saved_health := -1     # -1 = full health
-static var cleared := {}          # areas already cleared: their doors stay open
 
 const ENEMY_HEART_DROP_CHANCE := 0.35
 
@@ -100,28 +103,41 @@ const COLOR_WALL_TOP := Color("#7d6450")
 const COLOR_WATER := Color("#3d85c6")
 const COLOR_WATER_SHINE := Color("#6fa8dc")
 const COLOR_DOOR := Color("#1b1410")
+const COLOR_OUTSIDE := Color("#14121a")  # shown around an area smaller than the view
+
+## Static vars survive the scene reload we use to switch areas.
+static var area := "field"
+static var arrive_door := ""      # door digit we came through ("" = use P)
+static var saved_health := -1     # -1 = full health
+static var cleared := {}          # areas already cleared: their doors stay open
+static var visited := {}          # areas seen so far (shown on the mini-map)
 
 var map: Array = []
 var map_size := Vector2i.ZERO
 var player: Player
+var camera: Camera2D
 var hud: Hud
 var enemies_left := 0
-var _leaving := false
 var doors_locked := false
+var _leaving := false
+var _door_blockers: StaticBody2D  # solid boxes over the doors while locked
 var _doors := {}                  # door Area2D -> digit
 ## Doors ignore the player until they've stepped away from every door once.
 ## Otherwise you'd arrive next to a door and get bounced straight back through it.
 var _doors_armed := false
 var _clear_frames := 0
-var _door_blockers: StaticBody2D  # solid boxes over the doors while locked
 
 
 func _ready() -> void:
 	GameAudio.ensure(get_tree())
 	_setup_input()
+	visited[area] = true
 	_build_world()
-	_build_ui()
-	hud.show_message(area.capitalize() + ("" if not doors_locked else " - defeat all enemies!"), 2.0)
+	_build_hud()
+	if doors_locked:
+		hud.show_message("%s - defeat all enemies!" % area.capitalize(), 2.0)
+	else:
+		hud.show_message(area.capitalize(), 1.5)
 
 
 # --- Input -----------------------------------------------------------------
@@ -133,7 +149,10 @@ func _setup_input() -> void:
 	_add_action("move_right", [KEY_D, KEY_RIGHT])
 	_add_action("move_up", [KEY_W, KEY_UP])
 	_add_action("move_down", [KEY_S, KEY_DOWN])
-	_add_action("attack", [KEY_SPACE, KEY_J, KEY_Z])
+	_add_action("attack", [KEY_SPACE, KEY_J, KEY_Z])  # A button
+	_add_action("action_b", [KEY_K, KEY_X])            # B button (spare for later)
+	_add_action("action_x", [KEY_I, KEY_C])            # X button (spare for later)
+	_add_action("action_y", [KEY_U, KEY_V])            # Y button (spare for later)
 
 
 func _add_action(action: StringName, keys: Array) -> void:
@@ -173,8 +192,8 @@ func _tile_center(cell: Vector2i) -> Vector2:
 
 ## The first walkable tile next to a door, so we don't spawn on top of it.
 func _spawn_next_to(cell: Vector2i) -> Vector2:
-	for dir in [Vector2i.DOWN, Vector2i.UP, Vector2i.RIGHT, Vector2i.LEFT]:
-		var c: Vector2i = cell + dir
+	for dir: Vector2i in [Vector2i.DOWN, Vector2i.UP, Vector2i.RIGHT, Vector2i.LEFT]:
+		var c := cell + dir
 		if _tile_at(c.x, c.y) in [".", "P", "H"]:
 			return _tile_center(c)
 	return _tile_center(cell)
@@ -183,7 +202,7 @@ func _spawn_next_to(cell: Vector2i) -> Vector2:
 func _build_world() -> void:
 	map = AREAS[area]
 	var width := 0
-	for row in map:
+	for row: String in map:
 		width = maxi(width, row.length())
 	map_size = Vector2i(width, map.size())
 
@@ -201,7 +220,7 @@ func _build_world() -> void:
 	add_child(_door_blockers)
 
 	var player_pos := Vector2(TILE * 2, TILE * 2)
-	var arrive_pos := Vector2.INF
+	var arrived := false
 	var enemy_spots: Array[Vector2] = []
 	var heart_spots: Array[Vector2] = []
 
@@ -218,7 +237,8 @@ func _build_world() -> void:
 					shape.position = center
 					solids.add_child(shape)
 				"P":
-					player_pos = center
+					if not arrived and arrive_door == "":
+						player_pos = center
 				"E":
 					enemy_spots.append(center)
 				"H":
@@ -226,11 +246,9 @@ func _build_world() -> void:
 				_:
 					if _is_door(t):
 						_add_door(center, t)
-						if t == arrive_door and arrive_pos == Vector2.INF:
-							arrive_pos = _spawn_next_to(Vector2i(x, y))
-
-	if arrive_pos != Vector2.INF:
-		player_pos = arrive_pos
+						if t == arrive_door and not arrived:
+							player_pos = _spawn_next_to(Vector2i(x, y))
+							arrived = true
 
 	queue_redraw()
 
@@ -242,11 +260,9 @@ func _build_world() -> void:
 	add_child(player)
 	player.died.connect(_on_player_died)
 
-	var camera := Camera2D.new()
-	camera.limit_left = 0
-	camera.limit_top = 0
-	camera.limit_right = map_size.x * TILE
-	camera.limit_bottom = map_size.y * TILE
+	camera = Camera2D.new()
+	_update_camera_limits()
+	get_viewport().size_changed.connect(_update_camera_limits)
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 8.0
 	player.add_child(camera)
@@ -259,14 +275,27 @@ func _build_world() -> void:
 	# Lock the doors until every enemy is beaten (unless cleared before).
 	doors_locked = enemies_left > 0 and not cleared.has(area)
 	if not doors_locked:
+		cleared[area] = true
 		_door_blockers.queue_free()
 		_door_blockers = null
+
+
+## Keeps the camera inside the area. If the area is smaller than the view
+## (e.g. the lake on the tall Fold cover screen), it's centred instead.
+func _update_camera_limits() -> void:
+	var view := get_viewport_rect().size
+	var area_px := Vector2(map_size * TILE)
+	var margin := ((view - area_px) * 0.5).max(Vector2.ZERO).ceil()
+	camera.limit_left = int(-margin.x)
+	camera.limit_top = int(-margin.y)
+	camera.limit_right = int(area_px.x + margin.x)
+	camera.limit_bottom = int(area_px.y + margin.y)
 
 
 func _physics_process(_delta: float) -> void:
 	if _doors_armed or not is_instance_valid(player):
 		return
-	for door in _doors:
+	for door: Area2D in _doors:
 		if door.overlaps_body(player):
 			_clear_frames = 0
 			return
@@ -288,6 +317,11 @@ func _add_door(at: Vector2, digit: String) -> void:
 	rect.size = Vector2(TILE + 4, TILE + 4)
 	shape.shape = rect
 	door.add_child(shape)
+	door.body_entered.connect(func(body: Node2D) -> void:
+		if body is Player:
+			_go_through(digit))
+	add_child(door)
+	_doors[door] = digit
 
 	var block := CollisionShape2D.new()
 	var block_rect := RectangleShape2D.new()
@@ -295,11 +329,6 @@ func _add_door(at: Vector2, digit: String) -> void:
 	block.shape = block_rect
 	block.position = at
 	_door_blockers.add_child(block)
-	door.body_entered.connect(func(body: Node2D) -> void:
-		if body is Player:
-			_go_through(digit))
-	add_child(door)
-	_doors[door] = digit
 
 
 func _go_through(digit: String) -> void:
@@ -336,6 +365,7 @@ func _spawn_heart(at: Vector2) -> void:
 func _draw() -> void:
 	var floor_a: Color = FLOOR_COLORS[area][0]
 	var floor_b: Color = FLOOR_COLORS[area][1]
+	draw_rect(Rect2(Vector2(-1000, -1000), Vector2(map_size * TILE) + Vector2(2000, 2000)), COLOR_OUTSIDE)
 	for y in map_size.y:
 		for x in map_size.x:
 			var r := Rect2(Vector2(x, y) * TILE, Vector2(TILE, TILE))
@@ -358,28 +388,15 @@ func _draw() -> void:
 								draw_line(Vector2(bx, r.position.y + 2), Vector2(bx, r.end.y - 2), COLOR_WALL_TOP, 2.0)
 
 
-# --- UI & game flow --------------------------------------------------------
+# --- HUD & game flow -------------------------------------------------------
 
-func _build_ui() -> void:
+func _build_hud() -> void:
+	# This CanvasLayer draws on the top screen, over the game.
 	var layer := CanvasLayer.new()
-	layer.name = "UI"
+	layer.name = "HUD"
 	add_child(layer)
-
 	hud = Hud.new()
 	layer.add_child(hud)
-	hud.set_health(player.health, player.max_health)
-	player.health_changed.connect(hud.set_health)
-
-	var settings := SettingsMenu.new()
-
-	# On the phone, show the virtual joystick + attack button.
-	if DisplayServer.is_touchscreen_available():
-		var touch := TouchControls.new()
-		touch.settings = settings
-		layer.add_child(touch)
-
-	# Added last so the menu draws on top of everything.
-	layer.add_child(settings)
 
 
 func _on_enemy_killed(at: Vector2) -> void:
@@ -400,8 +417,10 @@ func _unlock_doors() -> void:
 	queue_redraw()
 	hud.show_message("Area cleared! The doors are open.")
 	GameAudio.sfx("unlock")
-	# If the player is already standing against a door, let them through now.
-	for door in _doors:
+	# If the player is already pushing against a door, let them through now.
+	if not _doors_armed:
+		return
+	for door: Area2D in _doors:
 		if door.overlaps_body(player):
 			_go_through(_doors[door])
 			break
@@ -410,6 +429,6 @@ func _unlock_doors() -> void:
 func _on_player_died() -> void:
 	hud.show_message("You fell...")
 	player.set_physics_process(false)
-	saved_health = -1      # come back with full hearts, at the door you came in by
+	saved_health = -1  # come back with full hearts, at the door you came in by
 	await get_tree().create_timer(1.5).timeout
 	get_tree().reload_current_scene()

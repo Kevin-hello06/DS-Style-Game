@@ -1,11 +1,12 @@
 class_name HeartShape
 ## Draws a heart (full, half or empty) on any CanvasItem.
-## Shared by the HUD and the heart pickup.
+## Shared by the bottom screen and the heart pickup.
 
 const COLOR_FULL := Color("#e74c3c")
 const COLOR_EMPTY := Color("#3b1f1f")
 const COLOR_OUTLINE := Color("#1a0d0d")
 const STEPS := 28
+const HALF_STEPS := 14
 
 
 static func _point(t: float, size: float) -> Vector2:
@@ -25,8 +26,8 @@ static func draw(canvas: CanvasItem, center: Vector2, fill: int, size := 10.0) -
 	if fill == 1:
 		# Left half: t from PI (bottom tip) round to TAU (top cusp).
 		var half := PackedVector2Array()
-		for i in STEPS / 2 + 1:
-			half.append(center + _point(PI + PI * i / (STEPS / 2), size))
+		for i in HALF_STEPS + 1:
+			half.append(center + _point(PI + PI * i / HALF_STEPS, size))
 		canvas.draw_colored_polygon(half, COLOR_FULL)
 
 	var outline := full.duplicate()

@@ -1,9 +1,10 @@
 extends Control
 class_name Hud
-## Hearts in the top-left corner and a centred message line.
+## Messages over the game on the top screen ("Area cleared!" and so on).
+## Hearts now live on the bottom screen.
 
-var current := 6
-var max_hp := 6
+const FONT_SIZE := 12
+
 var message := ""
 var message_timer := 0.0
 
@@ -11,12 +12,6 @@ var message_timer := 0.0
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 	set_anchors_preset(PRESET_FULL_RECT)
-
-
-func set_health(value: int, maximum: int) -> void:
-	current = value
-	max_hp = maximum
-	queue_redraw()
 
 
 func show_message(text: String, duration := 2.5) -> void:
@@ -34,16 +29,13 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var heart_count := ceili(max_hp / 2.0)
-	for i in heart_count:
-		var fill := clampi(current - i * 2, 0, 2)
-		HeartShape.draw(self, Vector2(12 + i * 13, 12), fill, 11.0)
-
-	if message != "":
-		var font := ThemeDB.fallback_font
-		var font_size := 16
-		var view := get_viewport_rect().size
-		var text_w := font.get_string_size(message, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var pos := Vector2((view.x - text_w) * 0.5, view.y * 0.35)
-		draw_string(font, pos + Vector2(1, 1), message, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
-		draw_string(font, pos, message, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+	if message == "":
+		return
+	var font := ThemeDB.fallback_font
+	var view := get_viewport_rect().size
+	var text_w := font.get_string_size(message, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+	# Near the bottom edge of the top screen, so it doesn't hide the player.
+	var pos := Vector2(floorf((view.x - text_w) * 0.5), view.y - 10)
+	draw_rect(Rect2(pos + Vector2(-4, -FONT_SIZE), Vector2(text_w + 8, FONT_SIZE + 6)), Color(0, 0, 0, 0.45))
+	draw_string(font, pos + Vector2(1, 1), message, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color.BLACK)
+	draw_string(font, pos, message, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color.WHITE)

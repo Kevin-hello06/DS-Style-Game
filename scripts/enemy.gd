@@ -56,6 +56,8 @@ func _physics_process(delta: float) -> void:
 
 
 func hit(amount: int, from: Vector2) -> void:
+	if hp <= 0:
+		return  # already defeated this frame
 	hp -= amount
 	flash_timer = 0.12
 	knockback = (global_position - from).normalized() * 220.0

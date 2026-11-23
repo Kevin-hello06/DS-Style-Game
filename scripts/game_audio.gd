@@ -1,7 +1,7 @@
 extends AudioStreamPlayer
 class_name GameAudio
 ## This node is the background music player, and also owns the players for
-## sound effects. Plays background music and sound effects from res://sounds/.
+## sound effects. Sounds come from res://sounds/.
 ## It lives on the scene tree's root (not inside the level), so the music keeps
 ## playing smoothly while areas reload. Settings are saved to user://settings.cfg
 ## so they're remembered next time the game starts.
@@ -22,7 +22,7 @@ var _voices: Array[AudioStreamPlayer] = []
 var _next_voice := 0
 
 
-## Called once by main.gd. Creates the audio node if it doesn't exist yet.
+## Called once by the world. Creates the audio node if it doesn't exist yet.
 static func ensure(tree: SceneTree) -> void:
 	if tree.root.has_node("GameAudio"):
 		return
@@ -36,7 +36,9 @@ static func ensure(tree: SceneTree) -> void:
 ## The audio node, or null if it isn't in the tree yet.
 static func instance() -> GameAudio:
 	var tree := Engine.get_main_loop() as SceneTree
-	return tree.root.get_node_or_null("GameAudio") as GameAudio if tree else null
+	if tree == null:
+		return null
+	return tree.root.get_node_or_null("GameAudio") as GameAudio
 
 
 static func sfx(sound: String) -> void:
@@ -67,6 +69,7 @@ static func load_settings() -> void:
 
 static func save_settings() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)  # keep other settings already saved (e.g. shell colour)
 	cfg.set_value("audio", "music", music_on)
 	cfg.set_value("audio", "sfx", sfx_on)
 	cfg.save(SETTINGS_PATH)
@@ -74,6 +77,7 @@ static func save_settings() -> void:
 
 func _init() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS  # keep music going in the pause menu
+	volume_db = MUSIC_VOLUME_DB
 
 	for sound in SOUNDS:
 		_streams[sound] = load("res://sounds/%s.wav" % sound)
@@ -82,8 +86,6 @@ func _init() -> void:
 		p.volume_db = SFX_VOLUME_DB
 		add_child(p)
 		_voices.append(p)
-
-	volume_db = MUSIC_VOLUME_DB
 
 
 func _ready() -> void:
@@ -99,7 +101,7 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		# Stopping a couple of frames before quitting avoids Godot's
+		# Stopping shortly before quitting avoids Godot's
 		# "leaked instances" warnings when the window is closed.
 		stop()
 		for v in _voices:
