@@ -1,10 +1,5 @@
 ; Engine configuration file.
-; It's best edited using the editor UI and not directly,
-; since the parameters that go here are not all obvious.
-;
-; Format:
-;   [section] ; section goes between []
-;   param=value ; assign values to parameters
+; Edit through Project > Project Settings in the Godot editor where possible.
 
 config_version=5
 
@@ -18,18 +13,25 @@ config/icon="res://icon.svg"
 
 [display]
 
+; The game is laid out like a DS: two 256x192 screens. Stretching is off because
+; scripts/ds_shell.gd scales both screens itself by whole numbers (crisp pixels)
+; and stacks them top/bottom or side by side to fit the phone, folded or open.
 window/size/viewport_width=256
 window/size/viewport_height=392
-window/size/window_width_override=640
+window/size/window_width_override=880
 window/size/window_height_override=960
+window/stretch/mode="disabled"
+; 6 = sensor: follows the phone in any orientation.
 window/handheld/orientation=6
 
 [input_devices]
 
+; Lets the mouse press the bottom-screen joystick and buttons on the laptop.
 pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
-renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"

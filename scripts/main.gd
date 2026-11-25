@@ -396,6 +396,7 @@ func _build_hud() -> void:
 	layer.name = "HUD"
 	add_child(layer)
 	hud = Hud.new()
+	hud.world = self
 	layer.add_child(hud)
 
 

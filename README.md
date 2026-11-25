@@ -5,8 +5,10 @@ There is no art yet: everything is drawn with placeholder shapes.
 
 ## What's in it
 
-- **DS layout:** a handheld console body with two equal halves. The game is on the top screen. The bottom screen has hearts, the area name, a mini-map, a D-pad, an A/B/X/Y diamond and a pause button.
-  Screens stack top/bottom on tall or square displays (Fold folded or open) and go side by side on wide ones (landscape, laptop).
+- **Two console styles, picked automatically:**
+  - **Classic** on ordinary phones: a single-screen handheld with the game screen at the top and the D-pad, A/B/X/Y buttons and MENU button on the body below (or either side when held sideways). Hearts and a mini-map are shown on the game screen.
+  - **Dual** on Samsung Galaxy Z Fold phones (folded or open), tablets and squarish windows: a clamshell with two equal halves. The game is on the top screen. The bottom screen shows hearts, the area name, the pause button, a map of the areas and how many enemies are left, with the D-pad and A/B/X/Y buttons on the body either side of it.
+  - The pause menu's **Console** option switches between Auto, Classic and Dual. Auto spots a Fold by its model number (SM-F9xx).
 - 8-way movement with 4-way facing, sword swing, knockback and invincibility frames
 - Blob enemies that wander, then chase you
 - Three connected areas (Field, Cave, Lake). Doors stay locked until every enemy in the area is beaten.
@@ -20,9 +22,9 @@ There is no art yet: everything is drawn with placeholder shapes.
 | Move   | D-pad: hold anywhere on the left half (8 directions) | WASD / arrow keys, or click the D-pad |
 | A: sword | A button (red) | Space / J / Z |
 | B, X, Y (spare, not used yet) | B / X / Y buttons | K or X / I or C / U or V |
-| Pause  | II button | Esc / P |
+| Pause  | II button (Dual) or MENU button (Classic) | Esc / P |
 
-The pause menu has Music, Sound effects and Shell colour options.
+The pause menu has Music, Sound effects, Console style and Shell colour options.
 
 ## Getting started
 
@@ -36,13 +38,13 @@ The pause menu has Music, Sound effects and Shell colour options.
 project.godot             display settings for the DS layout
 scenes/main.tscn          entry scene (runs ds_shell.gd)
 sounds/                   sound effects + bgm.wav (replace with your own .wav files)
-scripts/ds_shell.gd       the console body and the two screens (layout, scaling, colours)
-scripts/bottom_screen.gd  hearts, mini-map, D-pad, A/B/X/Y buttons, pause menu
+scripts/ds_shell.gd       the console body: Classic or Dual style, layout, scaling, colours
+scripts/bottom_screen.gd  D-pad, A/B/X/Y buttons, pause menu (+ the bottom screen in Dual)
 scripts/main.gd           the World: area maps, doors, spawning, game flow
 scripts/player.gd         hero movement, attack, health
 scripts/enemy.gd          blob enemy AI
 scripts/game_audio.gd     music + sound effects, saved settings
-scripts/hud.gd            messages on the top screen
+scripts/hud.gd            messages on the game screen (+ hearts and mini-map in Classic)
 scripts/heart_pickup.gd, heart_shape.gd, layers.gd
 ```
 

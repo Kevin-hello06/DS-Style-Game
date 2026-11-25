@@ -1,29 +1,34 @@
 extends Control
 class_name BottomScreen
-## The DS-style bottom screen: hearts and area name along the top, a mini-map
-## of the areas, a D-pad on the left, an A/B/X/Y diamond on the right
-## (A = sword; B, X, Y are spare for items later), and the pause menu.
+## The controls, and the pause menu. Works in both console styles:
 ##
-## Everything is laid out on a 256x192 grid; DSShell scales it up.
-## Touch: hold anywhere on the left half to use the D-pad (8 directions),
-## tap the A/B/X/Y buttons. Several fingers at once are fine.
-## Laptop: the mouse works as a finger, keyboard still works, Esc or P pauses.
+##   DUAL     This covers the lower half of the clamshell. The bottom screen in
+##            its middle shows hearts, the area name, a II pause button, the
+##            map and how many enemies are left; the D-pad and A/B/X/Y diamond
+##            sit on the body either side of it.
+##   CLASSIC  This covers the whole console body. Only the D-pad, the diamond
+##            and a MENU button are drawn, on the body itself; hearts and the
+##            mini-map are on the game screen instead (see hud.gd).
+##
+## A = sword; B, X and Y are spare for items later.
+## Touch: hold on the D-pad (8 directions) and tap the buttons; several
+## fingers at once are fine. Laptop: the mouse works as a finger, the keyboard
+## still works, and Esc or P pauses.
+## The pause menu opens over the game screen in CLASSIC, and over the bottom
+## screen in DUAL.
 
 const SIZE := Vector2(256, 192)
 const BAR_HEIGHT := 22.0
 
-# D-pad and buttons sit out towards the edges, where thumbs naturally rest.
-const DPAD_CENTER := Vector2(42, 136)
-const DPAD_ARM := 26.0     # centre to tip of each arm
-const DPAD_WIDTH := 18.0   # thickness of the cross
-const DPAD_DEADZONE := 5.0 # a finger right on the centre doesn't move you
+const DPAD_ARM := 26.0      # centre to tip of each arm
+const DPAD_WIDTH := 18.0    # thickness of the cross
+const DPAD_DEADZONE := 5.0  # a finger right on the centre doesn't move you
+const DPAD_REACH := 58.0    # CLASSIC: how far from the D-pad a touch still counts
 
-const DIAMOND_CENTER := Vector2(216, 136)
 const DIAMOND_OFFSET := 21.0
 const BUTTON_RADIUS := 12.0
 const TOUCH_SLACK := 6.0  # buttons accept taps a little outside their circle
-## Letter -> [offset direction, input action]. Same arrangement as a DS:
-## A right, B bottom, X top, Y left.
+## Letter -> [offset direction, input action]. A right, B bottom, X top, Y left.
 const BUTTONS := {
 	"A": [Vector2.RIGHT, "attack"],
 	"B": [Vector2.DOWN, "action_b"],
@@ -31,9 +36,10 @@ const BUTTONS := {
 	"Y": [Vector2.LEFT, "action_y"],
 }
 
-const MAP_CELL := Vector2(34, 20)
-const MAP_GAP := Vector2(10, 8)
-const MAP_TOP := 30.0
+# The map on the DUAL bottom screen (there's room for a big one now).
+const MAP_CELL := Vector2(56, 32)
+const MAP_GAP := Vector2(18, 14)
+const MAP_TOP := 40.0
 
 const COLOR_BG := Color("#2b2838")
 const COLOR_BAR := Color("#1d1b27")
@@ -49,6 +55,12 @@ const COLOR_MAP_VISITED := Color("#77728a")
 const COLOR_MAP_LINE := Color("#4a4659")
 
 var world: World
+var classic := false
+var dpad_center := Vector2(40, 120)
+var diamond_center := Vector2(376, 120)
+## The screen inside this panel: the bottom screen (DUAL) or the game screen
+## (CLASSIC). Touches there don't work the controls.
+var screen_rect := Rect2(Vector2.ZERO, SIZE)
 
 var _dpad_index := -1
 var _dpad_dir := Vector2i.ZERO
@@ -59,6 +71,7 @@ var _overlay: ColorRect
 var _pause_button: Button
 var _music: CheckButton
 var _sfx: CheckButton
+var _console_button: Button
 var _shell_button: Button
 
 
@@ -71,16 +84,57 @@ func _ready() -> void:
 	t.default_font_size = 11
 	theme = t
 
-	# Pause button, top-right. No keyboard focus, so Space (attack) never presses it.
+	# Pause button. No keyboard focus, so Space (attack) never presses it.
 	_pause_button = Button.new()
-	_pause_button.text = "II"
 	_pause_button.focus_mode = FOCUS_NONE
-	_pause_button.position = Vector2(SIZE.x - 28, 2)
-	_pause_button.size = Vector2(26, 18)
 	_pause_button.pressed.connect(open_menu)
 	add_child(_pause_button)
 
 	_build_menu()
+
+
+## DUAL: this covers the lower half of the clamshell (panel_size, in game
+## pixels), with the bottom screen at screen_pos.
+func setup_dual(panel_size: Vector2, screen_pos: Vector2, dpad: Vector2, diamond: Vector2) -> void:
+	classic = false
+	size = panel_size
+	dpad_center = dpad
+	diamond_center = diamond
+	screen_rect = Rect2(screen_pos, SIZE)
+	_overlay.position = screen_pos  # the pause menu covers the bottom screen
+	_pause_button.text = "II"
+	_pause_button.position = screen_pos + Vector2(SIZE.x - 28, 2)
+	_pause_button.size = Vector2(26, 18)
+	for s in ["normal", "hover", "pressed"]:
+		_pause_button.remove_theme_stylebox_override(s)
+	_pause_button.remove_theme_font_size_override("font_size")
+	queue_redraw()
+
+
+## CLASSIC: this covers the whole console body (body_size, in game pixels).
+func setup_classic(body_size: Vector2, game_screen_pos: Vector2, dpad: Vector2,
+		diamond: Vector2, menu_center: Vector2) -> void:
+	classic = true
+	size = body_size
+	dpad_center = dpad
+	diamond_center = diamond
+	screen_rect = Rect2(game_screen_pos, SIZE)
+	_overlay.position = game_screen_pos  # the pause menu covers the game screen
+	_pause_button.text = "MENU"
+	_pause_button.size = Vector2(44, 13)
+	_pause_button.position = menu_center - _pause_button.size * 0.5
+	_pause_button.add_theme_font_size_override("font_size", 8)
+	_pause_button.add_theme_stylebox_override("normal", _pill(COLOR_DPAD))
+	_pause_button.add_theme_stylebox_override("hover", _pill(COLOR_DPAD.lightened(0.1)))
+	_pause_button.add_theme_stylebox_override("pressed", _pill(COLOR_DPAD.darkened(0.3)))
+	queue_redraw()
+
+
+func _pill(color: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.set_corner_radius_all(7)
+	return sb
 
 
 func _build_menu() -> void:
@@ -95,7 +149,7 @@ func _build_menu() -> void:
 	_overlay.add_child(center)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 3)
 	center.add_child(box)
 
 	var title := Label.new()
@@ -113,6 +167,10 @@ func _build_menu() -> void:
 	_sfx.toggled.connect(GameAudio.set_sfx)
 	box.add_child(_sfx)
 
+	_console_button = Button.new()
+	_console_button.pressed.connect(_on_console_pressed)
+	box.add_child(_console_button)
+
 	_shell_button = Button.new()
 	_shell_button.pressed.connect(_on_shell_pressed)
 	box.add_child(_shell_button)
@@ -129,7 +187,7 @@ func open_menu() -> void:
 	_release_all()
 	_music.set_pressed_no_signal(GameAudio.music_on)
 	_sfx.set_pressed_no_signal(GameAudio.sfx_on)
-	_update_shell_text()
+	_update_menu_text()
 	_overlay.visible = true
 	_pause_button.visible = false
 	get_tree().paused = true
@@ -148,10 +206,18 @@ func _on_shell_pressed() -> void:
 	var shell := get_parent() as DSShell
 	if shell:
 		shell.next_shell()
-	_update_shell_text()
+	_update_menu_text()
 
 
-func _update_shell_text() -> void:
+func _on_console_pressed() -> void:
+	var shell := get_parent() as DSShell
+	if shell:
+		shell.next_console_mode()
+	_update_menu_text()
+
+
+func _update_menu_text() -> void:
+	_console_button.text = "Console: " + DSShell.console_label()
 	_shell_button.text = "Shell colour: " + DSShell.shell_name()
 
 
@@ -176,6 +242,19 @@ func _to_local(screen_pos: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * screen_pos
 
 
+## Whether a new touch at p (local) may start using the controls.
+func _touch_allowed(p: Vector2) -> bool:
+	if not Rect2(Vector2.ZERO, size).has_point(p):
+		return false  # off this panel (e.g. on the DUAL top screen)
+	if Rect2(_pause_button.position, _pause_button.size).grow(4).has_point(p):
+		return false
+	return not screen_rect.has_point(p)
+
+
+func _in_dpad_zone(p: Vector2) -> bool:
+	return p.x < size.x * 0.5 and p.distance_to(dpad_center) <= DPAD_REACH
+
+
 func _input(event: InputEvent) -> void:
 	if _overlay.visible:
 		return  # the menu's own buttons handle taps while paused
@@ -184,13 +263,13 @@ func _input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
 		var p := _to_local(touch.position)
 		if touch.pressed:
-			if not Rect2(Vector2(0, BAR_HEIGHT), SIZE - Vector2(0, BAR_HEIGHT)).has_point(p):
-				return  # on the top screen, or on the bar with the pause button
+			if not _touch_allowed(p):
+				return
 			var action := _button_at(p)
 			if action != "":
 				_button_fingers[touch.index] = action
 				Input.action_press(action)
-			elif _dpad_index == -1 and p.x < SIZE.x * 0.5:
+			elif _dpad_index == -1 and _in_dpad_zone(p):
 				_dpad_index = touch.index
 				_update_dpad(p)
 		else:
@@ -209,17 +288,20 @@ func _input(event: InputEvent) -> void:
 			_update_dpad(_to_local(drag.position))
 
 
+func button_position(letter: String) -> Vector2:
+	return diamond_center + (BUTTONS[letter][0] as Vector2) * DIAMOND_OFFSET
+
+
 ## The action of the A/B/X/Y button under this point, or "" if none.
 func _button_at(p: Vector2) -> String:
 	for letter: String in BUTTONS:
-		var c := DIAMOND_CENTER + (BUTTONS[letter][0] as Vector2) * DIAMOND_OFFSET
-		if p.distance_to(c) <= BUTTON_RADIUS + TOUCH_SLACK:
+		if p.distance_to(button_position(letter)) <= BUTTON_RADIUS + TOUCH_SLACK:
 			return BUTTONS[letter][1]
 	return ""
 
 
 func _update_dpad(p: Vector2) -> void:
-	var d := p - DPAD_CENTER
+	var d := p - dpad_center
 	if d.length() < DPAD_DEADZONE:
 		_set_dpad(Vector2i.ZERO)
 		return
@@ -264,68 +346,87 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	draw_rect(Rect2(Vector2.ZERO, SIZE), COLOR_BG)
-	draw_rect(Rect2(0, 0, SIZE.x, BAR_HEIGHT), COLOR_BAR)
-
-	# Hearts.
-	if world and is_instance_valid(world.player):
-		var hp := world.player.health
-		for i in ceili(world.player.max_health / 2.0):
-			HeartShape.draw(self, Vector2(12 + i * 14, 11), clampi(hp - i * 2, 0, 2), 11.0)
-
-	# Area name, centred in the bar.
-	var title := World.area.capitalize()
-	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-	draw_string(font, Vector2(floorf((SIZE.x - tw) * 0.5), 15), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, COLOR_TEXT)
-
-	_draw_minimap(font)
+	if not classic:
+		_draw_bottom_screen(font)
+		_draw_label(font, "A: Sword", diamond_center + Vector2(0, DIAMOND_OFFSET + BUTTON_RADIUS + 14))
+	elif size.y > size.x:
+		# Upright: between the D-pad and the buttons.
+		_draw_label(font, "A: Sword", Vector2(size.x * 0.5, dpad_center.y + 4))
+	else:
+		# Sideways: the middle is the game screen, so put it under the buttons.
+		_draw_label(font, "A: Sword", diamond_center + Vector2(0, DIAMOND_OFFSET + BUTTON_RADIUS + 14))
 	_draw_controls(font)
 
 
-func _map_cell_rect(cell: Vector2i, origin: Vector2) -> Rect2:
-	return Rect2(origin + Vector2(cell) * (MAP_CELL + MAP_GAP), MAP_CELL)
+## DUAL: the bottom screen's contents, drawn at screen_rect.
+func _draw_bottom_screen(font: Font) -> void:
+	draw_set_transform(screen_rect.position)
+	draw_rect(Rect2(Vector2.ZERO, SIZE), COLOR_BG)
+	draw_rect(Rect2(0, 0, SIZE.x, BAR_HEIGHT), COLOR_BAR)
+	if world and is_instance_valid(world.player):
+		draw_hearts(self, world.player, Vector2(12, 11), 11.0, 14.0)
+	var title := World.area.capitalize()
+	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	draw_string(font, Vector2(floorf((SIZE.x - tw) * 0.5), 15), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, COLOR_TEXT)
+	draw_minimap(self, font, SIZE.x * 0.5, MAP_TOP, MAP_CELL, MAP_GAP, 11, _blink)
+
+	# What's left to do in this area.
+	var status := "Area cleared - doors open"
+	if world and world.doors_locked:
+		status = "Enemies left: %d" % world.enemies_left
+	var sw := font.get_string_size(status, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	draw_string(font, Vector2(floorf((SIZE.x - sw) * 0.5), SIZE.y - 12), status,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, COLOR_TEXT if world and world.doors_locked else COLOR_MAP_CLEARED)
+	draw_set_transform(Vector2.ZERO)
 
 
-func _draw_minimap(font: Font) -> void:
-	# Centre the map horizontally based on how many columns it uses.
+static func draw_hearts(ci: CanvasItem, player: Player, first: Vector2, heart_size: float, spacing: float) -> void:
+	for i in ceili(player.max_health / 2.0):
+		HeartShape.draw(ci, first + Vector2(i * spacing, 0), clampi(player.health - i * 2, 0, 2), heart_size)
+
+
+## Draws the area map centred on center_x. With font_size 0 the boxes have no names.
+static func draw_minimap(ci: CanvasItem, font: Font, center_x: float, top_y: float, cell: Vector2,
+		gap: Vector2, font_size: int, blink: float) -> void:
 	var cols := 0
-	for cell: Vector2i in World.MAP_POS.values():
-		cols = maxi(cols, cell.x + 1)
-	var width := cols * MAP_CELL.x + (cols - 1) * MAP_GAP.x
-	var origin := Vector2(floorf((SIZE.x - width) * 0.5), MAP_TOP)
+	for c: Vector2i in World.MAP_POS.values():
+		cols = maxi(cols, c.x + 1)
+	var width := cols * cell.x + (cols - 1) * gap.x
+	var origin := Vector2(floorf(center_x - width * 0.5), top_y)
+	var rect_of := func(c: Vector2i) -> Rect2: return Rect2(origin + Vector2(c) * (cell + gap), cell)
 
 	# Connections between areas, drawn first so the boxes sit on top.
 	for from_area: String in World.DOORS:
 		for to_area: String in World.DOORS[from_area].values():
 			if World.visited.has(from_area) or World.visited.has(to_area):
-				draw_line(_map_cell_rect(World.MAP_POS[from_area], origin).get_center(),
-					_map_cell_rect(World.MAP_POS[to_area], origin).get_center(), COLOR_MAP_LINE, 2.0)
+				ci.draw_line(rect_of.call(World.MAP_POS[from_area]).get_center(),
+					rect_of.call(World.MAP_POS[to_area]).get_center(), COLOR_MAP_LINE, 2.0)
 
 	for name: String in World.MAP_POS:
-		var r := _map_cell_rect(World.MAP_POS[name], origin)
-		var is_current := name == World.area
-		if is_current:
-			var pulse := 0.75 + 0.25 * sin(_blink * 5.0)
-			draw_rect(r, COLOR_MAP_CURRENT * Color(pulse, pulse, pulse))
+		var r: Rect2 = rect_of.call(World.MAP_POS[name])
+		if name == World.area:
+			var pulse := 0.75 + 0.25 * sin(blink * 5.0)
+			ci.draw_rect(r, COLOR_MAP_CURRENT * Color(pulse, pulse, pulse))
 		elif World.cleared.has(name):
-			draw_rect(r, COLOR_MAP_CLEARED)
+			ci.draw_rect(r, COLOR_MAP_CLEARED)
 		elif World.visited.has(name):
-			draw_rect(r, COLOR_MAP_VISITED)
+			ci.draw_rect(r, COLOR_MAP_VISITED)
 		else:
-			draw_rect(r, COLOR_BG)
-			draw_rect(r, COLOR_DIM, false, 1.0)  # unexplored: outline only
-		var label := name.capitalize() if World.visited.has(name) else "?"
-		var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
-		var text_color := Color.BLACK if World.visited.has(name) else COLOR_DIM
-		draw_string(font, Vector2(floorf(r.get_center().x - lw * 0.5), r.position.y + 14), label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, text_color)
+			ci.draw_rect(r, COLOR_BG)
+			ci.draw_rect(r, COLOR_DIM, false, 1.0)  # unexplored: outline only
+		if font_size > 0:
+			var label := name.capitalize() if World.visited.has(name) else "?"
+			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+			var text_color := Color.BLACK if World.visited.has(name) else COLOR_DIM
+			ci.draw_string(font, Vector2(floorf(r.get_center().x - lw * 0.5), floorf(r.get_center().y + font_size * 0.35)), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
 
 
 func _draw_controls(font: Font) -> void:
 	# D-pad: lights up the pressed direction (from touch, or the keyboard).
 	var dir := Vector2(_dpad_dir) if _dpad_index != -1 \
 		else Input.get_vector("move_left", "move_right", "move_up", "move_down").sign()
-	var c := DPAD_CENTER
+	var c := dpad_center
 	var arm := DPAD_ARM
 	var half := DPAD_WIDTH * 0.5
 	draw_rect(Rect2(c.x - arm, c.y - half + 2, arm * 2, DPAD_WIDTH), COLOR_DPAD.darkened(0.5))  # shadow
@@ -346,11 +447,9 @@ func _draw_controls(font: Font) -> void:
 
 	# A/B/X/Y diamond.
 	for letter: String in BUTTONS:
-		var pos := DIAMOND_CENTER + (BUTTONS[letter][0] as Vector2) * DIAMOND_OFFSET
 		var color := COLOR_A if letter == "A" else COLOR_BUTTON
-		_draw_button(font, pos, BUTTON_RADIUS, color, letter, Input.is_action_pressed(BUTTONS[letter][1]))
-
-	_draw_label(font, "A: Sword", Vector2(SIZE.x * 0.5, SIZE.y - 10))
+		_draw_button(font, button_position(letter), BUTTON_RADIUS, color, letter,
+			Input.is_action_pressed(BUTTONS[letter][1]))
 
 
 func _draw_button(font: Font, c: Vector2, r: float, color: Color, letter: String, pressed: bool) -> void:
