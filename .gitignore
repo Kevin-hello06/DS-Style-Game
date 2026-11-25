@@ -1,7 +1,6 @@
 .godot/
 *.import.tmp
 android/build/
-*.apk
 *.aab
 *.idsig
 *.keystore
