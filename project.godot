@@ -1,37 +1,35 @@
 ; Engine configuration file.
-; Edit through Project > Project Settings in the Godot editor where possible.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
-config/name="Fold Adventure"
-config/description="A small top-down action-adventure built for the Galaxy Z Fold, with a DS-style two-screen layout."
+config/name="Classic Adventure"
+config/description="A small top-down action-adventure in a handheld-console style: single screen on ordinary phones, two screens on the Galaxy Z Fold."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
 [display]
 
-; The game is laid out like a DS: two 256x192 screens. Stretching is off because
-; scripts/ds_shell.gd scales both screens itself by whole numbers (crisp pixels)
-; and stacks them top/bottom or side by side to fit the phone, folded or open.
 window/size/viewport_width=256
 window/size/viewport_height=392
 window/size/window_width_override=880
 window/size/window_height_override=960
-window/stretch/mode="disabled"
-; 6 = sensor: follows the phone in any orientation.
 window/handheld/orientation=6
 
 [input_devices]
 
-; Lets the mouse press the bottom-screen joystick and buttons on the laptop.
 pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
-textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="mobile"
-renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true

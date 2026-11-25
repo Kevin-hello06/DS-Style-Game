@@ -1,4 +1,4 @@
-# Fold Adventure
+# Classic Adventure
 
 A small top-down action-adventure in Godot 4, made for the Galaxy Z Fold, with a DS-style two-screen layout.
 There is no art yet: everything is drawn with placeholder shapes.
@@ -6,12 +6,19 @@ There is no art yet: everything is drawn with placeholder shapes.
 ## What's in it
 
 - **Two console styles, picked automatically:**
-  - **Classic** on ordinary phones: a single-screen handheld with the game screen at the top and the D-pad, A/B/X/Y buttons and MENU button on the body below (or either side when held sideways). Hearts and a mini-map are shown on the game screen.
-  - **Dual** on Samsung Galaxy Z Fold phones (folded or open), tablets and squarish windows: a clamshell with two equal halves. The game is on the top screen. The bottom screen shows hearts, the area name, the pause button, a map of the areas and how many enemies are left, with the D-pad and A/B/X/Y buttons on the body either side of it.
+  - **Classic** on ordinary phones: a single-screen handheld with the game screen at the top and the D-pad, A/B/X/Y buttons and MENU button on the body below (or either side when held sideways). Hearts and the maps are shown on the game screen.
+  - **Dual** on Samsung Galaxy Z Fold phones (folded or open), tablets and squarish windows: a clamshell with two equal halves. The game is on the top screen, which is wider (24 tiles across) to fill its half. The bottom screen shows hearts, the area name, the pause button, the area and world maps and how many enemies are left, with the D-pad and A/B/X/Y buttons on the body either side of it.
+  - If the phone's camera punch hole would cover the D-pad or buttons, they move up or down out of its way automatically (Android reports where the hole is).
   - The pause menu's **Console** option switches between Auto, Classic and Dual. Auto spots a Fold by its model number (SM-F9xx).
 - 8-way movement with 4-way facing, sword swing, knockback and invincibility frames
 - Blob enemies that wander, then chase you
-- Three connected areas (Field, Cave, Lake). Doors stay locked until every enemy in the area is beaten.
+- **Level select** when the game starts: pick a level (the chosen level is previewed on the top screen in Dual) and press START. Levels you've beaten are marked "cleared" and remembered. The pause menu's **Level select** goes back to it.
+- **Three levels**, each a set of connected areas. Doors stay locked until every enemy in the area is beaten. Clear every area to finish the level ("LEVEL 1 CLEAR!") and move on; beat the last one for "GAME CLEAR!" (press A to go back to the level select).
+  - Level 1 *Green Fields*: Field, Cave, Lake
+  - Level 2 *Desert Ruins*: Dunes, Ruins, Oasis, Tomb (enemies take 3 hits and are faster)
+  - Level 3 *Frozen Castle*: Snowfield, Ice Cave, Castle Yard, Keep (faster still)
+- A cleared area stays empty when you come back, and hearts you've picked up stay gone.
+- Maps: a map of the area you're in (walls, water, doors, you, enemies and hearts) plus a small world map of all the areas: on the bottom screen in Dual, top-right of the game screen in Classic.
 - Hearts with half-hearts, heart pickups and drops
 - Music and sound effects, with on/off switches in the pause menu (remembered between sessions)
 
@@ -24,7 +31,7 @@ There is no art yet: everything is drawn with placeholder shapes.
 | B, X, Y (spare, not used yet) | B / X / Y buttons | K or X / I or C / U or V |
 | Pause  | II button (Dual) or MENU button (Classic) | Esc / P |
 
-The pause menu has Music, Sound effects, Console style and Shell colour options.
+The pause menu has Music, Sound effects, Console style, Shell colour and Level select options. On the level select, use the arrow keys and Space/Enter on a keyboard, or tap.
 
 ## Getting started
 
@@ -48,12 +55,15 @@ scripts/hud.gd            messages on the game screen (+ hearts and mini-map in 
 scripts/heart_pickup.gd, heart_shape.gd, layers.gd
 ```
 
-## Adding an area
+## Adding areas and levels
 
-In `scripts/main.gd`:
-1. Add a map to `AREAS`. Put a door digit (e.g. `3`) on its edge, and the same digit on the edge of the area it connects to.
-2. Add both directions to `DOORS`.
-3. Give it a floor colour in `FLOOR_COLORS` and a mini-map spot in `MAP_POS`.
+Everything is in `LEVELS` at the top of `scripts/main.gd`. Each level has a name, a start area, enemy toughness (`enemy_hp`, `enemy_speed`), and four tables:
+1. `areas`: the ASCII maps. Put a door digit (e.g. `3`) on an area's edge, and the same digit on the edge of the area it connects to.
+2. `doors`: where each digit leads, both directions.
+3. `map_pos`: where each area sits on the world map.
+4. `floors`: two floor colours per area.
+
+To add a level, copy a whole `{ ... }` block in `LEVELS` and change it.
 
 ## Running on the Fold
 

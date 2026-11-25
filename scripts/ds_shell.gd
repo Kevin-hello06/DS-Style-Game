@@ -2,9 +2,9 @@ extends Control
 class_name DSShell
 ## The handheld console the game is shown in. Two styles:
 ##
-##   DUAL     A clamshell with two equal halves. The game is on the top screen;
-##            hearts, the map and an enemy count are on the bottom screen, with
-##            the D-pad and buttons on the body either side of it.
+##   DUAL     A clamshell with two equal halves. The game is on the wide top
+##            screen; hearts, the maps and an enemy count are on the bottom
+##            screen, with the D-pad and buttons on the body either side of it.
 ##   CLASSIC  A single-screen handheld. The game screen sits at the top of the
 ##            body with the D-pad and buttons below it (or either side of it
 ##            when the phone is held sideways). Hearts and the mini-map are
@@ -24,7 +24,8 @@ enum Style { DUAL, CLASSIC }
 const SCREEN := Vector2(256, 192)   # every screen is 256x192 game pixels
 
 # Dual (clamshell) measurements, in game pixels.
-const DUAL_COL := 80.0   # body either side of each screen (holds the controls)
+const DUAL_COL := 80.0   # body either side of the bottom screen (holds the controls)
+const DUAL_TOP_W := 384.0  # the DUAL top screen is wider: 24 tiles across, filling its half
 const TOP_IN := 12.0     # body edge to screen, at the top of each half
 const LABEL_IN := 18.0   # below the top screen (room for the name)
 const BOTTOM_IN := 18.0  # below the bottom screen (same as LABEL_IN: equal halves)
@@ -53,6 +54,9 @@ const PALETTES := [
 static var shell_index := 0
 static var console_mode := "auto"   # "auto", "classic" or "dual"
 static var style := Style.DUAL      # the style currently in use
+## For testing on a PC: pretend the screen has camera cutouts here (screen
+## pixels). On a phone the real cutouts are read from Android instead.
+static var test_cutouts: Array[Rect2] = []
 
 var top: SubViewportContainer
 var viewport: SubViewport
@@ -60,6 +64,7 @@ var world: World
 var bottom: BottomScreen
 var side_by_side := false
 var screen_scale := 1.0
+var game_scale := 1.0   # the game view's scale (same as the console's)
 
 # Where things ended up (in real pixels), for drawing.
 var _upper_rect := Rect2()   # dual: top half of the console (or left half)
@@ -171,7 +176,7 @@ func _layout() -> void:
 		_layout_classic(s)
 	else:
 		_layout_dual(s)
-	top.scale = Vector2(screen_scale, screen_scale)
+	top.scale = Vector2(game_scale, game_scale)
 	bottom.scale = Vector2(screen_scale, screen_scale)
 	queue_redraw()
 
@@ -202,14 +207,21 @@ func _layout_dual(s: Vector2) -> void:
 	else:
 		_lower_rect = Rect2(origin + Vector2(0, upper_h + HINGE) * k, Vector2(half_w, lower_h) * k)
 
-	top.position = (_upper_rect.position + Vector2(DUAL_COL, TOP_IN) * k).floor()
+	# The top screen fills its half, apart from a slim edge of body.
+	game_scale = k
+	var top_size := Vector2(DUAL_TOP_W, SCREEN.y)
+	viewport.size = Vector2i(top_size)
+	top.size = top_size
+	top.position = (_upper_rect.position + Vector2((half_w - DUAL_TOP_W) * 0.5, TOP_IN) * k).floor()
 	bottom.position = _lower_rect.position
 	# Controls on the body either side of the bottom screen, a little below its
-	# middle. To move them, change the + 10 (bigger = lower, e.g. SCREEN.y - 40
-	# puts them near the bottom, clear of a camera punch hole above).
+	# middle. To move them, change the + 10 (bigger = lower). If the phone's
+	# camera hole would cover one, it's moved up or down out of the way.
 	var controls_y := TOP_IN + SCREEN.y * 0.5 + 10
-	bottom.setup_dual(Vector2(half_w, lower_h), Vector2(DUAL_COL, TOP_IN),
-		Vector2(DUAL_COL * 0.5, controls_y), Vector2(half_w - DUAL_COL * 0.5, controls_y))
+	var y_range := Vector2(TOP_IN + 34, lower_h - 34)
+	var dpad := _avoid_cutouts(Vector2(DUAL_COL * 0.5, controls_y), 34.0, y_range)
+	var diamond := _avoid_cutouts(Vector2(half_w - DUAL_COL * 0.5, controls_y), 36.0, y_range)
+	bottom.setup_dual(Vector2(half_w, lower_h), Vector2(DUAL_COL, TOP_IN), dpad, diamond)
 
 
 func _layout_classic(s: Vector2) -> void:
@@ -218,6 +230,7 @@ func _layout_classic(s: Vector2) -> void:
 	var pad := Vector2(OUTER, OUTER) * 2.0
 	var k := _whole(minf(s.x / (body + pad).x, s.y / (body + pad).y))
 	screen_scale = k
+	game_scale = k
 	var origin := ((s - body * k) * 0.5).floor()
 	_body_rect = Rect2(origin, body * k)
 
@@ -231,17 +244,62 @@ func _layout_classic(s: Vector2) -> void:
 		var controls_mid := screen_pos.y + SCREEN.y + LABEL_IN + 58
 		dpad = Vector2(60, controls_mid)
 		diamond = Vector2(body.x - 60, controls_mid)
+		var y_range := Vector2(controls_mid - 30, body.y - 50)
+		bottom.position = origin  # needed by _avoid_cutouts
+		dpad = _avoid_cutouts(dpad, 34.0, y_range)
+		diamond = _avoid_cutouts(diamond, 36.0, y_range)
 		menu = Vector2(body.x * 0.5, body.y - 26)
 	else:
 		screen_pos = Vector2(CLASSIC_SIDE_COL, 14)
 		var mid := screen_pos.y + SCREEN.y * 0.5
 		dpad = Vector2(CLASSIC_SIDE_COL * 0.5, mid)
 		diamond = Vector2(body.x - CLASSIC_SIDE_COL * 0.5, mid)
+		var y_range := Vector2(40, body.y - 50)
+		bottom.position = origin  # needed by _avoid_cutouts
+		dpad = _avoid_cutouts(dpad, 34.0, y_range)
+		diamond = _avoid_cutouts(diamond, 36.0, y_range)
 		menu = Vector2(body.x - CLASSIC_SIDE_COL * 0.5, body.y - 22)
 
 	top.position = (origin + screen_pos * k).floor()
 	bottom.position = origin
 	bottom.setup_classic(body, screen_pos, dpad, diamond, menu)
+
+
+# --- Camera punch holes ------------------------------------------------------
+
+## The screen's camera cutouts, in screen pixels (empty on most PCs).
+func _cutouts() -> Array[Rect2]:
+	if not test_cutouts.is_empty():
+		return test_cutouts
+	var out: Array[Rect2] = []
+	for r in DisplayServer.get_display_cutouts():
+		out.append(r)
+	return out
+
+
+## Moves a control (given in game pixels inside `bottom`, with its touch radius)
+## up or down, within y_range, until no camera cutout overlaps it. Stays put if
+## it's already clear, or if there's nowhere clear to go.
+func _avoid_cutouts(center: Vector2, radius: float, y_range: Vector2) -> Vector2:
+	var cutouts := _cutouts()
+	if cutouts.is_empty():
+		return center
+	var k := screen_scale
+	var hits := func(c: Vector2) -> bool:
+		var on_screen := Rect2(bottom.position + (c - Vector2(radius, radius)) * k, Vector2(radius, radius) * 2.0 * k)
+		for cut: Rect2 in cutouts:
+			if on_screen.intersects(cut.grow(4.0 * k)):
+				return true
+		return false
+	if not hits.call(center):
+		return center
+	# Try the nearest positions first, alternating down and up.
+	for step in range(4, int(y_range.y - y_range.x) + 4, 4):
+		for dir in [1, -1]:
+			var y: float = center.y + dir * step
+			if y >= y_range.x and y <= y_range.y and not hits.call(Vector2(center.x, y)):
+				return Vector2(center.x, y)
+	return center
 
 
 # --- Drawing the console -----------------------------------------------------
@@ -287,7 +345,7 @@ func _draw_screen_bezel(k: float, rect: Rect2) -> void:
 
 func _draw_name(k: float, p: Dictionary, center_x: float, top_y: float) -> void:
 	var font := ThemeDB.fallback_font
-	var label := "FOLD  ADVENTURE"
+	var label := "CLASSIC  ADVENTURE"
 	var fs := int(maxf(8.0, 7.0 * k))
 	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	draw_string(font, Vector2(floorf(center_x - w * 0.5), floorf(top_y + fs * 0.85)), label,
@@ -314,14 +372,10 @@ func _draw_dual(k: float, p: Dictionary) -> void:
 	_draw_hinge(k, p["body"], p["edge"])
 	_draw_body(k, _upper_rect, p, 12.0)
 	_draw_body(k, _lower_rect, p, 12.0)
-	var top_rect := Rect2(top.position, SCREEN * k)
-	_draw_screen_bezel(k, top_rect)
+	# The top screen has no bezel (the game sits straight in the body);
+	# the bottom screen keeps its frame.
+	var top_rect := Rect2(top.position, top.size * k)
 	_draw_screen_bezel(k, Rect2(bottom.position + Vector2(DUAL_COL, TOP_IN) * k, SCREEN * k))
-
-	# Speaker grilles either side of the top screen.
-	var cy := top_rect.get_center().y
-	_draw_grille(k, p, Vector2(_upper_rect.position.x + DUAL_COL * k * 0.5, cy), 4, 6)
-	_draw_grille(k, p, Vector2(_upper_rect.end.x - DUAL_COL * k * 0.5, cy), 4, 6)
 
 	_draw_name(k, p, _upper_rect.get_center().x, top_rect.end.y + BEZEL * k + 2 * k)
 	_draw_led(k, p, _lower_rect.position + Vector2(14, 14) * k)

@@ -3,9 +3,11 @@ class_name BottomScreen
 ## The controls, and the pause menu. Works in both console styles:
 ##
 ##   DUAL     This covers the lower half of the clamshell. The bottom screen in
-##            its middle shows hearts, the area name, a II pause button, the
-##            map and how many enemies are left; the D-pad and A/B/X/Y diamond
-##            sit on the body either side of it.
+##            its middle shows hearts, the area name and a II pause button, a
+##            map of the area you're in (walls, water, doors, you and the
+##            enemies), a small world map of all the areas, and how many
+##            enemies are left. The D-pad and A/B/X/Y diamond sit on the body
+##            either side of it.
 ##   CLASSIC  This covers the whole console body. Only the D-pad, the diamond
 ##            and a MENU button are drawn, on the body itself; hearts and the
 ##            mini-map are on the game screen instead (see hud.gd).
@@ -15,7 +17,8 @@ class_name BottomScreen
 ## fingers at once are fine. Laptop: the mouse works as a finger, the keyboard
 ## still works, and Esc or P pauses.
 ## The pause menu opens over the game screen in CLASSIC, and over the bottom
-## screen in DUAL.
+## screen in DUAL. So does the level select shown when the game starts (the
+## chosen level is previewed on the game screen behind it in DUAL).
 
 const SIZE := Vector2(256, 192)
 const BAR_HEIGHT := 22.0
@@ -36,10 +39,12 @@ const BUTTONS := {
 	"Y": [Vector2.LEFT, "action_y"],
 }
 
-# The map on the DUAL bottom screen (there's room for a big one now).
-const MAP_CELL := Vector2(56, 32)
-const MAP_GAP := Vector2(18, 14)
-const MAP_TOP := 40.0
+# DUAL bottom screen: the area map on the left, the small world map on the right.
+const AREA_MAP_BOX := Rect2(6, 28, 172, 138)
+const WORLD_MAP_CENTER_X := 217.0
+const WORLD_MAP_TOP := 42.0
+const MAP_CELL := Vector2(28, 16)
+const MAP_GAP := Vector2(8, 10)
 
 const COLOR_BG := Color("#2b2838")
 const COLOR_BAR := Color("#1d1b27")
@@ -53,6 +58,15 @@ const COLOR_MAP_CURRENT := Color("#f2c14e")
 const COLOR_MAP_CLEARED := Color("#5fae5a")
 const COLOR_MAP_VISITED := Color("#77728a")
 const COLOR_MAP_LINE := Color("#4a4659")
+# Area map colours.
+const COLOR_AM_FLOOR := Color("#3e3a50")
+const COLOR_AM_WALL := Color("#8a7560")
+const COLOR_AM_WATER := Color("#3d85c6")
+const COLOR_AM_DOOR_OPEN := Color("#f2c14e")
+const COLOR_AM_DOOR_LOCKED := Color("#d9534f")
+const COLOR_AM_ENEMY := Color("#c77dde")
+const COLOR_AM_HEART := Color("#ff6b6b")
+const COLOR_AM_PLAYER := Color.WHITE
 
 var world: World
 var classic := false
@@ -73,6 +87,10 @@ var _music: CheckButton
 var _sfx: CheckButton
 var _console_button: Button
 var _shell_button: Button
+var _title: ColorRect                 # the level select
+var _level_buttons: Array[Button] = []
+var _start_button: Button
+static var _focus_picked_level := false  # keyboard focus goes back to the level just picked
 
 
 func _ready() -> void:
@@ -91,6 +109,7 @@ func _ready() -> void:
 	add_child(_pause_button)
 
 	_build_menu()
+	_build_level_select()
 
 
 ## DUAL: this covers the lower half of the clamshell (panel_size, in game
@@ -102,6 +121,8 @@ func setup_dual(panel_size: Vector2, screen_pos: Vector2, dpad: Vector2, diamond
 	diamond_center = diamond
 	screen_rect = Rect2(screen_pos, SIZE)
 	_overlay.position = screen_pos  # the pause menu covers the bottom screen
+	_title.position = screen_pos
+	_title.color = Color(COLOR_BG, 1.0)
 	_pause_button.text = "II"
 	_pause_button.position = screen_pos + Vector2(SIZE.x - 28, 2)
 	_pause_button.size = Vector2(26, 18)
@@ -120,6 +141,8 @@ func setup_classic(body_size: Vector2, game_screen_pos: Vector2, dpad: Vector2,
 	diamond_center = diamond
 	screen_rect = Rect2(game_screen_pos, SIZE)
 	_overlay.position = game_screen_pos  # the pause menu covers the game screen
+	_title.position = game_screen_pos
+	_title.color = Color(COLOR_BG, 0.9)  # the level's preview shows faintly behind
 	_pause_button.text = "MENU"
 	_pause_button.size = Vector2(44, 13)
 	_pause_button.position = menu_center - _pause_button.size * 0.5
@@ -175,10 +198,83 @@ func _build_menu() -> void:
 	_shell_button.pressed.connect(_on_shell_pressed)
 	box.add_child(_shell_button)
 
+	var levels := Button.new()
+	levels.text = "Level select"
+	levels.pressed.connect(_on_level_select_pressed)
+	box.add_child(levels)
+
 	var resume := Button.new()
 	resume.text = "Resume"
 	resume.pressed.connect(close_menu)
 	box.add_child(resume)
+
+
+# --- Level select ------------------------------------------------------------
+
+func _build_level_select() -> void:
+	_title = ColorRect.new()
+	_title.size = SIZE
+	_title.visible = World.title_mode
+	add_child(_title)
+
+	var center := CenterContainer.new()
+	center.size = SIZE
+	_title.add_child(center)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	center.add_child(box)
+
+	var heading := Label.new()
+	heading.text = "SELECT LEVEL"
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_color_override("font_color", COLOR_MAP_CURRENT)
+	box.add_child(heading)
+
+	for i in World.LEVELS.size():
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_pressed = i == World.level
+		b.custom_minimum_size = Vector2(200, 0)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var done := "   - cleared" if World.beaten.has(i) else ""
+		b.text = "Level %d: %s%s" % [i + 1, World.LEVELS[i]["name"], done]
+		b.pressed.connect(_on_level_picked.bind(i))
+		box.add_child(b)
+		_level_buttons.append(b)
+
+	_start_button = Button.new()
+	_start_button.text = "START"
+	_start_button.add_theme_color_override("font_color", COLOR_MAP_CURRENT)
+	_start_button.pressed.connect(_on_start_pressed)
+	box.add_child(_start_button)
+
+	if World.title_mode:
+		_pause_button.visible = false
+		# Keyboard: arrows move between buttons, Space or Enter picks.
+		var focus := _level_buttons[World.level] if _focus_picked_level else _start_button
+		focus.grab_focus.call_deferred()
+
+
+func _on_level_picked(i: int) -> void:
+	# Show that level's preview behind the menu.
+	_focus_picked_level = true
+	World.go_to_level_select(i)
+	get_tree().reload_current_scene()
+
+
+func _on_start_pressed() -> void:
+	_focus_picked_level = false
+	World.start_level(World.level)
+	World.title_mode = false
+	get_tree().reload_current_scene()
+
+
+func _on_level_select_pressed() -> void:
+	close_menu()
+	_focus_picked_level = false
+	World.go_to_level_select(World.level)
+	get_tree().reload_current_scene()
 
 
 # --- Pause menu --------------------------------------------------------------
@@ -226,6 +322,8 @@ func is_menu_open() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _title.visible:
+		return  # no pause menu on the level select
 	var p_key: bool = event is InputEventKey and event.pressed and not event.echo \
 		and (event as InputEventKey).physical_keycode == KEY_P
 	if event.is_action_pressed("ui_cancel") or p_key:
@@ -256,7 +354,7 @@ func _in_dpad_zone(p: Vector2) -> bool:
 
 
 func _input(event: InputEvent) -> void:
-	if _overlay.visible:
+	if _overlay.visible or _title.visible:
 		return  # the menu's own buttons handle taps while paused
 
 	if event is InputEventScreenTouch:
@@ -365,10 +463,16 @@ func _draw_bottom_screen(font: Font) -> void:
 	draw_rect(Rect2(0, 0, SIZE.x, BAR_HEIGHT), COLOR_BAR)
 	if world and is_instance_valid(world.player):
 		draw_hearts(self, world.player, Vector2(12, 11), 11.0, 14.0)
-	var title := World.area.capitalize()
+	var title := "L%d  %s" % [World.level + 1, World.area.capitalize()]
 	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 	draw_string(font, Vector2(floorf((SIZE.x - tw) * 0.5), 15), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, COLOR_TEXT)
-	draw_minimap(self, font, SIZE.x * 0.5, MAP_TOP, MAP_CELL, MAP_GAP, 11, _blink)
+	if world:
+		draw_area_map(self, world, AREA_MAP_BOX, 4, _blink)
+	var wl := "World"
+	var ww := font.get_string_size(wl, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
+	draw_string(font, Vector2(floorf(WORLD_MAP_CENTER_X - ww * 0.5), WORLD_MAP_TOP - 5), wl,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 9, COLOR_DIM)
+	draw_minimap(self, font, WORLD_MAP_CENTER_X, WORLD_MAP_TOP, MAP_CELL, MAP_GAP, 8, _blink, SIZE.x - AREA_MAP_BOX.end.x - 4)
 
 	# What's left to do in this area.
 	var status := "Area cleared - doors open"
@@ -385,25 +489,73 @@ static func draw_hearts(ci: CanvasItem, player: Player, first: Vector2, heart_si
 		HeartShape.draw(ci, first + Vector2(i * spacing, 0), clampi(player.health - i * 2, 0, 2), heart_size)
 
 
-## Draws the area map centred on center_x. With font_size 0 the boxes have no names.
+## Draws a map of the area the player is in, as big as fits in box (at most
+## max_px screen pixels per tile, whole numbers so it stays sharp), centred.
+## Returns the rectangle it used.
+static func draw_area_map(ci: CanvasItem, world: World, box: Rect2, max_px: int, blink: float) -> Rect2:
+	var tiles := world.map_size
+	if tiles.x <= 0 or tiles.y <= 0:
+		return Rect2()
+	var px := clampi(mini(int(box.size.x / tiles.x), int(box.size.y / tiles.y)), 1, max_px)
+	var map_px := Vector2(tiles * px)
+	var origin := (box.position + (box.size - map_px) * 0.5).floor()
+	ci.draw_rect(Rect2(origin, map_px).grow(1), Color(0, 0, 0, 0.6))
+	ci.draw_rect(Rect2(origin, map_px), COLOR_AM_FLOOR)
+	var tile := Vector2(px, px)
+	for y in tiles.y:
+		for x in tiles.x:
+			var t := world.tile_at(Vector2i(x, y))
+			var color := Color.TRANSPARENT
+			if t == "#":
+				color = COLOR_AM_WALL
+			elif t == "~":
+				color = COLOR_AM_WATER
+			elif world.is_door(t):
+				color = COLOR_AM_DOOR_LOCKED if world.doors_locked else COLOR_AM_DOOR_OPEN
+			if color.a > 0.0:
+				ci.draw_rect(Rect2(origin + Vector2(x, y) * px, tile), color)
+
+	# Things in the area, scaled from world pixels to map pixels.
+	var to_map := func(pos: Vector2) -> Vector2: return origin + pos / World.TILE * px
+	var dot := maxf(1.0, px * 0.6)
+	for h: Node2D in world.hearts():
+		ci.draw_rect(Rect2(to_map.call(h.position) - Vector2(dot, dot) * 0.5, Vector2(dot, dot)), COLOR_AM_HEART)
+	for e: Node2D in world.enemies():
+		ci.draw_rect(Rect2(to_map.call(e.position) - Vector2(dot, dot) * 0.5, Vector2(dot, dot)), COLOR_AM_ENEMY)
+	if is_instance_valid(world.player) and int(blink * 4.0) % 2 == 0:  # you: blinking
+		var pd := dot + 1.0
+		ci.draw_rect(Rect2(to_map.call(world.player.position) - Vector2(pd, pd) * 0.5, Vector2(pd, pd)), COLOR_AM_PLAYER)
+	return Rect2(origin, map_px)
+
+
+## Draws the world map (all the areas in this level) centred on center_x.
+## If it would be wider than max_width it's shrunk to fit (and the names are
+## left off when the boxes get too small for them). With font_size 0 the boxes have no names.
 static func draw_minimap(ci: CanvasItem, font: Font, center_x: float, top_y: float, cell: Vector2,
-		gap: Vector2, font_size: int, blink: float) -> void:
+		gap: Vector2, font_size: int, blink: float, max_width := 0.0) -> void:
 	var cols := 0
-	for c: Vector2i in World.MAP_POS.values():
+	for c: Vector2i in World.map_pos().values():
 		cols = maxi(cols, c.x + 1)
 	var width := cols * cell.x + (cols - 1) * gap.x
+	if max_width > 0.0 and width > max_width:
+		var shrink := max_width / width
+		cell = (cell * shrink).floor()
+		gap = (gap * shrink).floor()
+		width = cols * cell.x + (cols - 1) * gap.x
+		if cell.x < 26.0:
+			font_size = 0
 	var origin := Vector2(floorf(center_x - width * 0.5), top_y)
 	var rect_of := func(c: Vector2i) -> Rect2: return Rect2(origin + Vector2(c) * (cell + gap), cell)
 
 	# Connections between areas, drawn first so the boxes sit on top.
-	for from_area: String in World.DOORS:
-		for to_area: String in World.DOORS[from_area].values():
+	for from_area: String in World.doors():
+		for to_area: String in World.doors()[from_area].values():
 			if World.visited.has(from_area) or World.visited.has(to_area):
-				ci.draw_line(rect_of.call(World.MAP_POS[from_area]).get_center(),
-					rect_of.call(World.MAP_POS[to_area]).get_center(), COLOR_MAP_LINE, 2.0)
+				ci.draw_line(rect_of.call(World.map_pos()[from_area]).get_center(),
+					rect_of.call(World.map_pos()[to_area]).get_center(), COLOR_MAP_LINE, 2.0)
 
-	for name: String in World.MAP_POS:
-		var r: Rect2 = rect_of.call(World.MAP_POS[name])
+	for name: String in World.map_pos():
+		var r: Rect2 = rect_of.call(World.map_pos()[name])
 		if name == World.area:
 			var pulse := 0.75 + 0.25 * sin(blink * 5.0)
 			ci.draw_rect(r, COLOR_MAP_CURRENT * Color(pulse, pulse, pulse))

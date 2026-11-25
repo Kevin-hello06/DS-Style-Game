@@ -2,6 +2,8 @@ extends Area2D
 class_name HeartPickup
 ## Restores one full heart when the player touches it.
 
+signal picked_up
+
 @export var heal_amount := 2
 
 var _t := 0.0
@@ -27,6 +29,7 @@ func _on_body_entered(body: Node2D) -> void:
 	if body is Player:
 		body.heal(heal_amount)
 		GameAudio.sfx("pickup")
+		picked_up.emit()
 		queue_free()
 
 
