@@ -70,6 +70,7 @@ const COLOR_AM_PLAYER := Color.WHITE
 
 var world: World
 var classic := false
+var control_scale := 1.0  # bigger D-pad and buttons where there's room (classic upright)
 var dpad_center := Vector2(40, 120)
 var diamond_center := Vector2(376, 120)
 ## The screen inside this panel: the bottom screen (DUAL) or the game screen
@@ -87,6 +88,7 @@ var _music: CheckButton
 var _sfx: CheckButton
 var _console_button: Button
 var _shell_button: Button
+var _fill_button: Button
 var _title: ColorRect                 # the level select
 var _level_buttons: Array[Button] = []
 var _start_button: Button
@@ -116,6 +118,7 @@ func _ready() -> void:
 ## pixels), with the bottom screen at screen_pos.
 func setup_dual(panel_size: Vector2, screen_pos: Vector2, dpad: Vector2, diamond: Vector2) -> void:
 	classic = false
+	control_scale = 1.0
 	size = panel_size
 	dpad_center = dpad
 	diamond_center = diamond
@@ -134,8 +137,9 @@ func setup_dual(panel_size: Vector2, screen_pos: Vector2, dpad: Vector2, diamond
 
 ## CLASSIC: this covers the whole console body (body_size, in game pixels).
 func setup_classic(body_size: Vector2, game_screen_pos: Vector2, dpad: Vector2,
-		diamond: Vector2, menu_center: Vector2) -> void:
+		diamond: Vector2, menu_center: Vector2, controls_size := 1.0) -> void:
 	classic = true
+	control_scale = controls_size
 	size = body_size
 	dpad_center = dpad
 	diamond_center = diamond
@@ -172,7 +176,7 @@ func _build_menu() -> void:
 	_overlay.add_child(center)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 3)
+	box.add_theme_constant_override("separation", 1)
 	center.add_child(box)
 
 	var title := Label.new()
@@ -197,6 +201,10 @@ func _build_menu() -> void:
 	_shell_button = Button.new()
 	_shell_button.pressed.connect(_on_shell_pressed)
 	box.add_child(_shell_button)
+
+	_fill_button = Button.new()
+	_fill_button.pressed.connect(_on_fill_pressed)
+	box.add_child(_fill_button)
 
 	var levels := Button.new()
 	levels.text = "Level select"
@@ -305,6 +313,13 @@ func _on_shell_pressed() -> void:
 	_update_menu_text()
 
 
+func _on_fill_pressed() -> void:
+	var shell := get_parent() as DSShell
+	if shell:
+		shell.toggle_fill()
+	_update_menu_text()
+
+
 func _on_console_pressed() -> void:
 	var shell := get_parent() as DSShell
 	if shell:
@@ -315,6 +330,7 @@ func _on_console_pressed() -> void:
 func _update_menu_text() -> void:
 	_console_button.text = "Console: " + DSShell.console_label()
 	_shell_button.text = "Shell colour: " + DSShell.shell_name()
+	_fill_button.text = "Screen: " + DSShell.screen_label()
 
 
 func is_menu_open() -> bool:
@@ -350,7 +366,7 @@ func _touch_allowed(p: Vector2) -> bool:
 
 
 func _in_dpad_zone(p: Vector2) -> bool:
-	return p.x < size.x * 0.5 and p.distance_to(dpad_center) <= DPAD_REACH
+	return p.x < size.x * 0.5 and p.distance_to(dpad_center) <= DPAD_REACH * control_scale
 
 
 func _input(event: InputEvent) -> void:
@@ -387,13 +403,13 @@ func _input(event: InputEvent) -> void:
 
 
 func button_position(letter: String) -> Vector2:
-	return diamond_center + (BUTTONS[letter][0] as Vector2) * DIAMOND_OFFSET
+	return diamond_center + (BUTTONS[letter][0] as Vector2) * DIAMOND_OFFSET * control_scale
 
 
 ## The action of the A/B/X/Y button under this point, or "" if none.
 func _button_at(p: Vector2) -> String:
 	for letter: String in BUTTONS:
-		if p.distance_to(button_position(letter)) <= BUTTON_RADIUS + TOUCH_SLACK:
+		if p.distance_to(button_position(letter)) <= (BUTTON_RADIUS + TOUCH_SLACK) * control_scale:
 			return BUTTONS[letter][1]
 	return ""
 
@@ -447,12 +463,9 @@ func _draw() -> void:
 	if not classic:
 		_draw_bottom_screen(font)
 		_draw_label(font, "A: Sword", diamond_center + Vector2(0, DIAMOND_OFFSET + BUTTON_RADIUS + 14))
-	elif size.y > size.x:
-		# Upright: between the D-pad and the buttons.
-		_draw_label(font, "A: Sword", Vector2(size.x * 0.5, dpad_center.y + 4))
 	else:
-		# Sideways: the middle is the game screen, so put it under the buttons.
-		_draw_label(font, "A: Sword", diamond_center + Vector2(0, DIAMOND_OFFSET + BUTTON_RADIUS + 14))
+		# Under the buttons.
+		_draw_label(font, "A: Sword", diamond_center + Vector2(0, (DIAMOND_OFFSET + BUTTON_RADIUS) * control_scale + 14))
 	_draw_controls(font)
 
 
@@ -579,37 +592,42 @@ func _draw_controls(font: Font) -> void:
 	var dir := Vector2(_dpad_dir) if _dpad_index != -1 \
 		else Input.get_vector("move_left", "move_right", "move_up", "move_down").sign()
 	var c := dpad_center
-	var arm := DPAD_ARM
-	var half := DPAD_WIDTH * 0.5
-	draw_rect(Rect2(c.x - arm, c.y - half + 2, arm * 2, DPAD_WIDTH), COLOR_DPAD.darkened(0.5))  # shadow
-	draw_rect(Rect2(c.x - half, c.y - arm + 2, DPAD_WIDTH, arm * 2), COLOR_DPAD.darkened(0.5))
-	draw_rect(Rect2(c.x - arm, c.y - half, arm * 2, DPAD_WIDTH), COLOR_DPAD)
-	draw_rect(Rect2(c.x - half, c.y - arm, DPAD_WIDTH, arm * 2), COLOR_DPAD)
+	var cs := control_scale
+	var arm := DPAD_ARM * cs
+	var width := DPAD_WIDTH * cs
+	var half := width * 0.5
+	var drop := 2.0 * cs
+	draw_rect(Rect2(c.x - arm, c.y - half + drop, arm * 2, width), COLOR_DPAD.darkened(0.5))  # shadow
+	draw_rect(Rect2(c.x - half, c.y - arm + drop, width, arm * 2), COLOR_DPAD.darkened(0.5))
+	draw_rect(Rect2(c.x - arm, c.y - half, arm * 2, width), COLOR_DPAD)
+	draw_rect(Rect2(c.x - half, c.y - arm, width, arm * 2), COLOR_DPAD)
 	for d: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 		var lit := (d.x != 0 and signf(dir.x) == d.x) or (d.y != 0 and signf(dir.y) == d.y)
-		var tip := c + d * (arm - 4)
-		var side := Vector2(-d.y, d.x) * 4.0
+		var tip := c + d * (arm - 4 * cs)
+		var side := Vector2(-d.y, d.x) * 4.0 * cs
 		if lit:
 			# Light up this arm: from the edge of the centre square out to its tip.
 			var across := Vector2(absf(d.y), absf(d.x)) * half
 			draw_rect(Rect2(c + d * half - across, Vector2.ZERO).expand(c + d * arm + across), COLOR_DPAD_LIT)
-		draw_colored_polygon(PackedVector2Array([tip, tip - d * 6 + side, tip - d * 6 - side]),
+		draw_colored_polygon(PackedVector2Array([tip, tip - d * 6 * cs + side, tip - d * 6 * cs - side]),
 			COLOR_TEXT if lit else COLOR_DIM)
-	draw_circle(c, 4, COLOR_DPAD.darkened(0.25))
+	draw_circle(c, 4 * cs, COLOR_DPAD.darkened(0.25))
 
 	# A/B/X/Y diamond.
 	for letter: String in BUTTONS:
 		var color := COLOR_A if letter == "A" else COLOR_BUTTON
-		_draw_button(font, button_position(letter), BUTTON_RADIUS, color, letter,
+		_draw_button(font, button_position(letter), BUTTON_RADIUS * cs, color, letter,
 			Input.is_action_pressed(BUTTONS[letter][1]))
 
 
 func _draw_button(font: Font, c: Vector2, r: float, color: Color, letter: String, pressed: bool) -> void:
-	draw_circle(c + Vector2(0, 2), r, color.darkened(0.5))  # shadow
-	var offset := Vector2(0, 2) if pressed else Vector2.ZERO
+	var drop := 2.0 * control_scale
+	draw_circle(c + Vector2(0, drop), r, color.darkened(0.5))  # shadow
+	var offset := Vector2(0, drop) if pressed else Vector2.ZERO
 	draw_circle(c + offset, r, color.darkened(0.2) if pressed else color)
-	var w := font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-	draw_string(font, c + offset + Vector2(-w * 0.5, 4), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	var fs := int(12 * control_scale)
+	var w := font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	draw_string(font, c + offset + Vector2(-w * 0.5, fs * 0.35), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
 func _draw_label(font: Font, text: String, at: Vector2) -> void:

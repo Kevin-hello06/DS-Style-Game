@@ -6,9 +6,10 @@ There is no art yet: everything is drawn with placeholder shapes.
 ## What's in it
 
 - **Two console styles, picked automatically:**
-  - **Classic** on ordinary phones: a single-screen handheld with the game screen at the top and the D-pad, A/B/X/Y buttons and MENU button on the body below (or either side when held sideways). Hearts and the maps are shown on the game screen.
+  - **Classic** on ordinary phones: a single-screen handheld. Upright, the game screen sits in a dark glass lens at the top with big D-pad and A/B/X/Y buttons below and a MENU button at the bottom; sideways, the D-pad and buttons are either side of the screen. Hearts and the maps are shown on the game screen.
   - **Dual** on Samsung Galaxy Z Fold phones (folded or open), tablets and squarish windows: a clamshell with two equal halves. The game is on the top screen, which is wider (24 tiles across) to fill its half. The bottom screen shows hearts, the area name, the pause button, the area and world maps and how many enemies are left, with the D-pad and A/B/X/Y buttons on the body either side of it.
-  - If the phone's camera punch hole would cover the D-pad or buttons, they move up or down out of its way automatically (Android reports where the hole is).
+  - **Camera punch holes, notches and Dynamic Island:** a cutout at the top or bottom edge moves the screens and controls clear of it (using the safe area the phone reports), while the console body still runs to the edges. A cutout at a side, like the Fold 7's camera on the buttons' side in Dual, doesn't move the layout: the D-pad or buttons step up or down out of its way instead.
+  - **Fold 7 opened sideways (Dual):** the inner camera sits halfway down the right edge of the lower half, so (same layout as the kart game) the D-pad and A/B/X/Y sit a little below halfway down, mirrored (the D-pad is as far from the left edge as A is from the right edge), with A/B/X/Y just far enough in that A keeps about 7 mm clear of the camera, even if Android doesn't report the hole. Tune `FOLD_BELOW_MIDDLE` and `FOLD_HOLE_CLEAR` in `scripts/ds_shell.gd`.
   - The pause menu's **Console** option switches between Auto, Classic and Dual. Auto spots a Fold by its model number (SM-F9xx).
 - 8-way movement with 4-way facing, sword swing, knockback and invincibility frames
 - Blob enemies that wander, then chase you
@@ -31,7 +32,13 @@ There is no art yet: everything is drawn with placeholder shapes.
 | B, X, Y (spare, not used yet) | B / X / Y buttons | K or X / I or C / U or V |
 | Pause  | II button (Dual) or MENU button (Classic) | Esc / P |
 
-The pause menu has Music, Sound effects, Console style, Shell colour and Level select options. On the level select, use the arrow keys and Space/Enter on a keyboard, or tap.
+The pause menu has Music, Sound effects, Console style, Shell colour, Screen and Level select options. **Screen: Fill** (the default) runs the console edge to edge across the whole display with square corners, stretching the body (and, in Dual, both halves, split by a dark hinge band) to fit; **Screen: Sharp** keeps whole-number scales for the crispest pixels, with dark space around. On the level select, use the arrow keys and Space/Enter on a keyboard, or tap.
+
+## Previewing phone screens on the laptop
+
+Press **F2** while the game is running to cycle through phone shapes inside the window, whatever size it is:
+Phone upright, Phone sideways, Fold 7 cover, Fold 7 open, Fold 7 open sideways, and back to Off.
+Each shows the console exactly as it would lay out on that screen, with a rough camera punch hole drawn in (black dot) so you can check nothing important sits under it. The Fold 7 previews use the Fold's Dual style, as the real phone would.
 
 ## Getting started
 
